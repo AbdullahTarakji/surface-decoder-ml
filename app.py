@@ -210,11 +210,13 @@ def plot_syndrome(distance, rounds, noise_p):
     sampler = circuit.compile_detector_sampler(seed=np.random.randint(0, 10**6))
     dets, _ = sampler.sample(shots=2000, separate_observables=True)
     dets = np.asarray(dets, dtype=bool)
-    nz = np.where(dets.any(axis=1))[0]
-    shot = dets[nz[0]] if len(nz) else dets[0]
     coord_arr = np.array([coords[i] for i in range(n_det)])
     ts = coord_arr[:, 2].astype(int)
     mask = ts == sorted(set(ts))[0]
+    # Find a shot where at least one first-round detector fires (not just any round).
+    first_round_fires = dets[:, mask].any(axis=1)
+    candidates = np.where(first_round_fires)[0]
+    shot = dets[candidates[0]] if len(candidates) else dets[np.where(dets.any(axis=1))[0][0]] if dets.any() else dets[0]
     xs, ys, fired = coord_arr[mask, 0], coord_arr[mask, 1], shot[mask]
     fig, ax = plt.subplots(figsize=(4.5, 4.5))
     ax.scatter(xs[~fired], ys[~fired], s=260, facecolors="none",
@@ -267,7 +269,7 @@ left, right = st.columns([1, 1])
 with left:
     st.subheader("What an error looks like")
     fig_syn, n_fired = plot_syndrome(distance, rounds, noise_p)
-    st.pyplot(fig_syn)
+    st.pyplot(fig_syn, use_container_width=True)
     st.caption(
         "Each circle is a stabilizer check. Red circles ({} here) detected something "
         "wrong. The decoder reads this pattern and predicts whether the logical qubit "
@@ -307,10 +309,8 @@ if run:
     c1.metric("Raw logical-error events", "{:,}".format(int(y_test.sum())))
     c2.metric("MWPM logical error rate", "{:.4%}".format(mwpm_rate),
               help="{:,} wrong out of {:,}".format(mwpm_err, n_test))
-    delta = (nn_rate - mwpm_rate) / mwpm_rate * 100 if mwpm_rate > 0 else 0.0
     c3.metric(nn_name + " logical error rate", "{:.4%}".format(nn_rate),
-              delta="{:+.1f}% vs MWPM".format(delta), delta_color="inverse",
-              help="{:,} wrong out of {:,}".format(nn_err, n_test))
+              help="{:,} wrong out of {:,} — see the CI chart below for the honest comparison".format(nn_err, n_test))
 
     overlap = not (mwpm_hi < nn_lo or nn_hi < mwpm_lo)
     if overlap:
@@ -324,7 +324,7 @@ if run:
         st.info("The 95% confidence intervals do not overlap: **" + better + "** is "
                 "significantly better at this setting and sample size.")
 
-    fig, ax = plt.subplots(figsize=(7, 4))
+    fig, ax = plt.subplots(figsize=(9, 5))
     names = ["MWPM", nn_name]
     rates = [mwpm_rate, nn_rate]
     lo = [mwpm_rate - mwpm_lo, nn_rate - nn_lo]
@@ -345,7 +345,7 @@ if run:
         )
     ax.set_ylim(0, max(mwpm_hi, nn_hi, 1e-9) * 1.4)
     plt.tight_layout()
-    st.pyplot(fig)
+    st.pyplot(fig, use_container_width=True)
 
     both_right = int(np.sum((mwpm_pred == y_test) & (nn_pred == y_test)))
     both_wrong = int(np.sum((mwpm_pred != y_test) & (nn_pred != y_test)))
@@ -354,7 +354,7 @@ if run:
     with st.expander("Where do the two decoders agree and disagree?"):
         st.markdown(
             "- Both correct: **{:,}**\n".format(both_right) +
-            "- Both wrong (uncorrectable errors): **{:,}**\n".format(both_wrong) +
+            "- Both decoders failed: **{:,}**\n".format(both_wrong) +
             "- Only MWPM correct: **{:,}**\n".format(mwpm_only) +
             "- Only {} correct: **{:,}**\n".format(nn_name, nn_only) +
             "- Agreement rate: **{:.4%}**".format((both_right + both_wrong) / n_test)
