@@ -1,2 +1,8 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Linguist: keep repo language stats representing the actual source code.
+# Exported notebook HTML must never count as a language.
+*.html linguist-generated=true
+# Notebooks are research documentation, not the shipped codebase.
+*.ipynb linguist-documentation=true
